@@ -1,0 +1,123 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, FlatList, TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import CryptoJS from 'crypto-js';
+import uuid from 'react-native-uuid';
+
+const encryptMessage = (message, key) => {
+  return CryptoJS.AES.encrypt(message, key).toString();
+};
+
+const decryptMessage = (ciphertext, key) => {
+  const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+  return bytes.toString(CryptoJS.enc.Utf8);
+};
+
+const ChatApp = () => {
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [currentPage, setCurrentPage] = useState('contacts');
+  const encryptionKey = 'secureKey123';
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      const storedMessages = await AsyncStorage.getItem('messages');
+      if (storedMessages) {
+        setMessages(JSON.parse(storedMessages));
+      }
+    };
+    loadMessages();
+  }, []);
+
+  useEffect(() => {
+    const removeOldMessages = async () => {
+      const now = Date.now();
+      const filteredMessages = messages.filter(msg => now - msg.timestamp < 86400000);
+      setMessages(filteredMessages);
+      await AsyncStorage.setItem('messages', JSON.stringify(filteredMessages));
+    };
+    removeOldMessages();
+  }, [messages]);
+
+  const signUp = async () => {
+    if (!email || !username || !password || !privacyAccepted) return;
+    await AsyncStorage.setItem('user', JSON.stringify({ email, username, password }));
+    setIsLoggedIn(true);
+  };
+
+  const signIn = async () => {
+    const storedUser = await AsyncStorage.getItem('user');
+    if (storedUser) {
+      const { username: storedUsername, password: storedPassword } = JSON.parse(storedUser);
+      if (username === storedUsername && password === storedPassword) {
+        setIsLoggedIn(true);
+      }
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim()) return;
+    const encryptedText = encryptMessage(newMessage, encryptionKey);
+    const newMsg = { id: uuid.v4(), text: encryptedText, timestamp: Date.now() };
+    const updatedMessages = [...messages, newMsg];
+    setMessages(updatedMessages);
+    await AsyncStorage.setItem('messages', JSON.stringify(updatedMessages));
+    setNewMessage('');
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <View style={{ padding: 20 }}>
+        <Text>Sign Up</Text>
+        <TextInput value={email} onChangeText={setEmail} placeholder="Email" />
+        <TextInput value={username} onChangeText={setUsername} placeholder="Username" />
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => setPrivacyAccepted(!privacyAccepted)}>
+            <Text>{privacyAccepted ? "✅" : "⬜"}</Text>
+          </TouchableOpacity>
+          <Text> I have read and agree to the Privacy Policy</Text>
+        </View>
+        <Button title="Sign Up" onPress={signUp} disabled={!privacyAccepted} />
+        <Text>Sign In</Text>
+        <TextInput value={username} onChangeText={setUsername} placeholder="Username" />
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry />
+        <Button title="Sign In" onPress={signIn} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ padding: 20 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+        <Button title="Contacts" onPress={() => setCurrentPage('contacts')} />
+        <Button title="Chats" onPress={() => setCurrentPage('chats')} />
+        <Button title="Files" onPress={() => setCurrentPage('files')} />
+      </View>
+      {currentPage === 'contacts' && <Text>Contact List (To be implemented)</Text>}
+      {currentPage === 'chats' && (
+        <View>
+          <FlatList
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={{ padding: 5, borderBottomWidth: 1 }}>
+                <Text>{decryptMessage(item.text, encryptionKey)}</Text>
+              </View>
+            )}
+          />
+          <TextInput value={newMessage} onChangeText={setNewMessage} placeholder="Type a message..." />
+          <Button title="Send" onPress={sendMessage} />
+        </View>
+      )}
+      {currentPage === 'files' && <Text>File Sharing (To be implemented)</Text>}
+    </View>
+  );
+};
+
+export default ChatApp;
